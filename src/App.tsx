@@ -3,7 +3,8 @@ import Streamgraph from "./components/Charts/Streamgraph";
 import MoviesRuntime from "./components/Charts/MoviesRuntime";
 import TVSeasons from "./components/Charts/TVSeasons";
 import WorldMap from "./components/Charts/WorldMap";
-import ActorGalaxy from "./components/Charts/ActorGalaxy"; // ✅ added
+import ActorGalaxy from "./components/Charts/ActorGalaxy";
+import GenreHeatmap from "./components/Charts/GenreHeatmap"; // ✅ NEW
 
 // ---------- literal unions ----------
 const TYPES = ["All", "Movie", "TV Show"] as const;
@@ -46,19 +47,8 @@ interface CountryYearRec {
   country: string;
   count: number;
 }
-
-interface ActorNode {
-  id: string;
-  label: string;
-  degree: number;
-  dominant_genre: string | null;
-  count: number;
-}
-interface ActorEdge {
-  source: string;
-  target: string;
-  weight: number;
-}
+interface ActorNode { id: string; label: string; degree: number; dominant_genre: string | null; count: number }
+interface ActorEdge { source: string; target: string; weight: number }
 
 // ---------- paths to JSON in /public/data ----------
 const DATA = {
@@ -137,7 +127,17 @@ export default function App() {
     if (genreByYear.length) setYearRange([minYear, maxYear]);
   }, [genreByYear, minYear, maxYear]);
 
-  // apply filters
+  // heatmap data: type + year filter only (do NOT exclude genres here)
+  const heatmapData = useMemo(() => {
+    return genreByYear.filter(
+      (d) =>
+        (typeFilter === "All" || d.type === typeFilter) &&
+        d.release_year >= yearRange[0] &&
+        d.release_year <= yearRange[1]
+    ).map(d => ({ release_year: d.release_year, genres: d.genres, count: d.count }));
+  }, [genreByYear, typeFilter, yearRange]);
+
+  // apply filters (for other charts)
   const filteredGenreByYear = useMemo(() => {
     return genreByYear.filter(
       (d) =>
@@ -180,6 +180,13 @@ export default function App() {
         (tvYRange ? d.seasons >= tvYRange[0] && d.seasons <= tvYRange[1] : true)
     );
   }, [tvSeasons, yearRange, selectedGenres, ratingGroups, tvYRange, selectedCountry]);
+
+  // helpers
+  const toggleGenre = (g: string) => {
+    setSelectedGenres((prev) =>
+      prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]
+    );
+  };
 
   // UI
   return (
@@ -272,9 +279,7 @@ export default function App() {
                     <input
                       type="checkbox"
                       checked={active}
-                      onChange={() =>
-                        setSelectedGenres((prev) => (active ? prev.filter((x) => x !== g) : [...prev, g]))
-                      }
+                      onChange={() => toggleGenre(g)}
                     />
                     <span className="opacity-90">{g}</span>
                   </label>
@@ -293,7 +298,7 @@ export default function App() {
                 setMovieYRange(null);
                 setTvYRange(null);
                 setSelectedCountry(null);
-                setFocusedActor(null); // ✅ also reset galaxy focus
+                setFocusedActor(null);
               }}
               className="w-full py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-sm"
             >
@@ -333,6 +338,21 @@ export default function App() {
                   count: d.count,
                 }))}
                 yearRange={yearRange}
+              />
+            )}
+          </div>
+
+          {/* GENRE HEATMAP */}
+          <div className="bg-[#141414] rounded-2xl p-4 border border-white/10 h-[520px]">
+            {loading ? (
+              <div className="h-full flex items-center justify-center text-sm opacity-70">Loading data…</div>
+            ) : (
+              <GenreHeatmap
+                data={heatmapData}
+                yearRange={yearRange}
+                selectedGenres={selectedGenres}
+                onToggleGenre={toggleGenre}
+                onBrushYears={(rng) => rng && setYearRange(rng)}
               />
             )}
           </div>
