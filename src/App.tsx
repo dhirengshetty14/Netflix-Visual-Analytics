@@ -4,7 +4,8 @@ import MoviesRuntime from "./components/Charts/MoviesRuntime";
 import TVSeasons from "./components/Charts/TVSeasons";
 import WorldMap from "./components/Charts/WorldMap";
 import ActorGalaxy from "./components/Charts/ActorGalaxy";
-import GenreHeatmap from "./components/Charts/GenreHeatmap"; // ✅ NEW
+import GenreHeatmap from "./components/Charts/GenreHeatmap";
+import RadialAgeClock from "./components/Charts/RadialAgeClock"; // ✅ NEW
 
 // ---------- literal unions ----------
 const TYPES = ["All", "Movie", "TV Show"] as const;
@@ -17,7 +18,7 @@ type RatingGroup = (typeof RATINGS)[number];
 interface GenreYearRec {
   release_year: number;
   genres: string;
-  type: Exclude<ContentType, "All">; // "Movie" | "TV Show"
+  type: Exclude<ContentType, "All">;
   count: number;
   total: number;
 }
@@ -49,6 +50,15 @@ interface CountryYearRec {
 }
 interface ActorNode { id: string; label: string; degree: number; dominant_genre: string | null; count: number }
 interface ActorEdge { source: string; target: string; weight: number }
+interface ContentAgeRec {
+  title: string;
+  type: "Movie" | "TV Show";
+  release_year: number;
+  added_year: number;
+  age_years: number;
+  primary_genre: string | null;
+  rating_group: RatingGroup;
+}
 
 // ---------- paths to JSON in /public/data ----------
 const DATA = {
@@ -58,6 +68,7 @@ const DATA = {
   tvSeasons: "/data/derived_tv_seasons.json",
   countryByYear: "/data/derived_country_by_year.json",
   network: "/data/derived_network_top_actors.json",
+  contentAge: "/data/derived_content_age.json", // ✅ NEW
 };
 
 export default function App() {
@@ -67,6 +78,7 @@ export default function App() {
   const [moviesRuntime, setMoviesRuntime] = useState<MovieRuntimeRec[]>([]);
   const [tvSeasons, setTvSeasons] = useState<TVSeasonsRec[]>([]);
   const [countryByYear, setCountryByYear] = useState<CountryYearRec[]>([]);
+  const [contentAge, setContentAge] = useState<ContentAgeRec[] | null>(null); // ✅ nullable (file optional)
   const [loading, setLoading] = useState(true);
 
   // filters
@@ -87,18 +99,28 @@ export default function App() {
   const [actorEdges, setActorEdges] = useState<ActorEdge[]>([]);
   const [focusedActor, setFocusedActor] = useState<string | null>(null);
 
+  // RadialAgeClock
+  const [ageBucket, setAgeBucket] = useState<string | null>(null); // "5–9y", etc
+
   // load data
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [g, r, m, t, c, net] = await Promise.all([
+      // try to fetch contentAge; if missing, keep as null (panel will show "No data")
+      const fetchContentAge = fetch(DATA.contentAge)
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null);
+
+      const [g, r, m, t, c, net, ca] = await Promise.all([
         fetch(DATA.genreByYear).then((res) => res.json()),
         fetch(DATA.ratingDist).then((res) => res.json()),
         fetch(DATA.moviesRuntime).then((res) => res.json()),
         fetch(DATA.tvSeasons).then((res) => res.json()),
         fetch(DATA.countryByYear).then((res) => res.json()),
         fetch(DATA.network).then((res) => res.json()),
+        fetchContentAge,
       ]);
+
       setGenreByYear(g);
       setRatingDist(r);
       setMoviesRuntime(m);
@@ -106,6 +128,7 @@ export default function App() {
       setCountryByYear(c);
       setActorNodes(net.nodes);
       setActorEdges(net.edges);
+      setContentAge(ca);  // may be null
       setLoading(false);
     })();
   }, []);
@@ -127,17 +150,19 @@ export default function App() {
     if (genreByYear.length) setYearRange([minYear, maxYear]);
   }, [genreByYear, minYear, maxYear]);
 
-  // heatmap data: type + year filter only (do NOT exclude genres here)
+  // heatmap dataset (type+years only)
   const heatmapData = useMemo(() => {
-    return genreByYear.filter(
-      (d) =>
-        (typeFilter === "All" || d.type === typeFilter) &&
-        d.release_year >= yearRange[0] &&
-        d.release_year <= yearRange[1]
-    ).map(d => ({ release_year: d.release_year, genres: d.genres, count: d.count }));
+    return genreByYear
+      .filter(
+        (d) =>
+          (typeFilter === "All" || d.type === typeFilter) &&
+          d.release_year >= yearRange[0] &&
+          d.release_year <= yearRange[1]
+      )
+      .map((d) => ({ release_year: d.release_year, genres: d.genres, count: d.count }));
   }, [genreByYear, typeFilter, yearRange]);
 
-  // apply filters (for other charts)
+  // filtered series for other charts
   const filteredGenreByYear = useMemo(() => {
     return genreByYear.filter(
       (d) =>
@@ -183,9 +208,7 @@ export default function App() {
 
   // helpers
   const toggleGenre = (g: string) => {
-    setSelectedGenres((prev) =>
-      prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]
-    );
+    setSelectedGenres((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
   };
 
   // UI
@@ -276,11 +299,7 @@ export default function App() {
                 const active = selectedGenres.includes(g);
                 return (
                   <label key={g} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={active}
-                      onChange={() => toggleGenre(g)}
-                    />
+                    <input type="checkbox" checked={active} onChange={() => toggleGenre(g)} />
                     <span className="opacity-90">{g}</span>
                   </label>
                 );
@@ -299,6 +318,7 @@ export default function App() {
                 setTvYRange(null);
                 setSelectedCountry(null);
                 setFocusedActor(null);
+                setAgeBucket(null);
               }}
               className="w-full py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-sm"
             >
@@ -338,6 +358,23 @@ export default function App() {
                   count: d.count,
                 }))}
                 yearRange={yearRange}
+              />
+            )}
+          </div>
+
+          {/* RADIAL CONTENT-AGE CLOCK */}
+          <div className="bg-[#141414] rounded-2xl p-4 border border-white/10 h-[520px]">
+            {loading ? (
+              <div className="h-full flex items-center justify-center text-sm opacity-70">Loading data…</div>
+            ) : (
+              <RadialAgeClock
+                data={contentAge}
+                yearRange={yearRange}
+                typeFilter={typeFilter}
+                selectedGenres={selectedGenres}
+                onToggleGenre={toggleGenre}
+                selectedBucket={ageBucket}
+                onSelectBucket={setAgeBucket}
               />
             )}
           </div>
@@ -403,8 +440,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Active brush / country / actor badges */}
-          {(movieYRange || tvYRange || selectedCountry || focusedActor) && (
+          {/* Active badges */}
+          {(movieYRange || tvYRange || selectedCountry || focusedActor || ageBucket) && (
             <div className="text-xs opacity-80 space-x-2">
               {movieYRange && (
                 <span className="inline-block px-2 py-1 rounded bg-white/10 border border-white/20">
@@ -424,6 +461,11 @@ export default function App() {
               {focusedActor && (
                 <span className="inline-block px-2 py-1 rounded bg-white/10 border border-white/20">
                   Focused actor: {focusedActor}
+                </span>
+              )}
+              {ageBucket && (
+                <span className="inline-block px-2 py-1 rounded bg-white/10 border border-white/20">
+                  Age bucket: {ageBucket}
                 </span>
               )}
             </div>
