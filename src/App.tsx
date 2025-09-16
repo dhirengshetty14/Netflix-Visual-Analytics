@@ -3,6 +3,7 @@ import Streamgraph from "./components/Charts/Streamgraph";
 import MoviesRuntime from "./components/Charts/MoviesRuntime";
 import TVSeasons from "./components/Charts/TVSeasons";
 import WorldMap from "./components/Charts/WorldMap";
+import ActorGalaxy from "./components/Charts/ActorGalaxy"; // ✅ added
 
 // ---------- literal unions ----------
 const TYPES = ["All", "Movie", "TV Show"] as const;
@@ -46,6 +47,19 @@ interface CountryYearRec {
   count: number;
 }
 
+interface ActorNode {
+  id: string;
+  label: string;
+  degree: number;
+  dominant_genre: string | null;
+  count: number;
+}
+interface ActorEdge {
+  source: string;
+  target: string;
+  weight: number;
+}
+
 // ---------- paths to JSON in /public/data ----------
 const DATA = {
   genreByYear: "/data/derived_genre_by_year.json",
@@ -53,6 +67,7 @@ const DATA = {
   moviesRuntime: "/data/derived_movies_runtime.json",
   tvSeasons: "/data/derived_tv_seasons.json",
   countryByYear: "/data/derived_country_by_year.json",
+  network: "/data/derived_network_top_actors.json",
 };
 
 export default function App() {
@@ -77,22 +92,30 @@ export default function App() {
   // WorldMap
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
 
+  // ActorGalaxy
+  const [actorNodes, setActorNodes] = useState<ActorNode[]>([]);
+  const [actorEdges, setActorEdges] = useState<ActorEdge[]>([]);
+  const [focusedActor, setFocusedActor] = useState<string | null>(null);
+
   // load data
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [g, r, m, t, c] = await Promise.all([
+      const [g, r, m, t, c, net] = await Promise.all([
         fetch(DATA.genreByYear).then((res) => res.json()),
         fetch(DATA.ratingDist).then((res) => res.json()),
         fetch(DATA.moviesRuntime).then((res) => res.json()),
         fetch(DATA.tvSeasons).then((res) => res.json()),
         fetch(DATA.countryByYear).then((res) => res.json()),
+        fetch(DATA.network).then((res) => res.json()),
       ]);
       setGenreByYear(g);
       setRatingDist(r);
       setMoviesRuntime(m);
       setTvSeasons(t);
       setCountryByYear(c);
+      setActorNodes(net.nodes);
+      setActorEdges(net.edges);
       setLoading(false);
     })();
   }, []);
@@ -270,6 +293,7 @@ export default function App() {
                 setMovieYRange(null);
                 setTvYRange(null);
                 setSelectedCountry(null);
+                setFocusedActor(null); // ✅ also reset galaxy focus
               }}
               className="w-full py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-sm"
             >
@@ -328,6 +352,19 @@ export default function App() {
             )}
           </div>
 
+          {/* ACTOR GALAXY */}
+          <div className="bg-[#141414] rounded-2xl p-4 border border-white/10 h-[560px]">
+            {loading ? (
+              <div className="h-full flex items-center justify-center text-sm opacity-70">Loading data…</div>
+            ) : (
+              <ActorGalaxy
+                nodes={actorNodes}
+                edges={actorEdges}
+                onPick={(actor) => setFocusedActor(actor)}
+              />
+            )}
+          </div>
+
           {/* RUNTIME + SEASONS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-[#141414] rounded-2xl p-4 border border-white/10 h-[420px]">
@@ -346,8 +383,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Active brush / country badges */}
-          {(movieYRange || tvYRange || selectedCountry) && (
+          {/* Active brush / country / actor badges */}
+          {(movieYRange || tvYRange || selectedCountry || focusedActor) && (
             <div className="text-xs opacity-80 space-x-2">
               {movieYRange && (
                 <span className="inline-block px-2 py-1 rounded bg-white/10 border border-white/20">
@@ -362,6 +399,11 @@ export default function App() {
               {selectedCountry && (
                 <span className="inline-block px-2 py-1 rounded bg-white/10 border border-white/20">
                   Country: {selectedCountry}
+                </span>
+              )}
+              {focusedActor && (
+                <span className="inline-block px-2 py-1 rounded bg-white/10 border border-white/20">
+                  Focused actor: {focusedActor}
                 </span>
               )}
             </div>
