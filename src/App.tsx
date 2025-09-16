@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Streamgraph from "./components/Charts/Streamgraph";
 import MoviesRuntime from "./components/Charts/MoviesRuntime";
 import TVSeasons from "./components/Charts/TVSeasons";
+import WorldMap from "./components/Charts/WorldMap";
 
 // ---------- literal unions ----------
 const TYPES = ["All", "Movie", "TV Show"] as const;
@@ -26,7 +27,7 @@ interface RatingDistRec {
 interface MovieRuntimeRec {
   title: string;
   release_year: number;
-  runtime_min: number | null;      // allow nulls from JSON
+  runtime_min: number | null;
   rating_group: RatingGroup;
   primary_genre: string | null;
   primary_country: string | null;
@@ -34,10 +35,15 @@ interface MovieRuntimeRec {
 interface TVSeasonsRec {
   title: string;
   release_year: number;
-  seasons: number | null;          // allow nulls from JSON
+  seasons: number | null;
   rating_group: RatingGroup;
   primary_genre: string | null;
   primary_country: string | null;
+}
+interface CountryYearRec {
+  release_year: number;
+  country: string;
+  count: number;
 }
 
 // ---------- paths to JSON in /public/data ----------
@@ -46,6 +52,7 @@ const DATA = {
   ratingDist: "/data/derived_rating_distribution.json",
   moviesRuntime: "/data/derived_movies_runtime.json",
   tvSeasons: "/data/derived_tv_seasons.json",
+  countryByYear: "/data/derived_country_by_year.json",
 };
 
 export default function App() {
@@ -54,6 +61,7 @@ export default function App() {
   const [ratingDist, setRatingDist] = useState<RatingDistRec[]>([]);
   const [moviesRuntime, setMoviesRuntime] = useState<MovieRuntimeRec[]>([]);
   const [tvSeasons, setTvSeasons] = useState<TVSeasonsRec[]>([]);
+  const [countryByYear, setCountryByYear] = useState<CountryYearRec[]>([]);
   const [loading, setLoading] = useState(true);
 
   // filters
@@ -66,20 +74,25 @@ export default function App() {
   const [movieYRange, setMovieYRange] = useState<[number, number] | null>(null);
   const [tvYRange, setTvYRange] = useState<[number, number] | null>(null);
 
+  // WorldMap
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
+
   // load data
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [g, r, m, t] = await Promise.all([
+      const [g, r, m, t, c] = await Promise.all([
         fetch(DATA.genreByYear).then((res) => res.json()),
         fetch(DATA.ratingDist).then((res) => res.json()),
         fetch(DATA.moviesRuntime).then((res) => res.json()),
         fetch(DATA.tvSeasons).then((res) => res.json()),
+        fetch(DATA.countryByYear).then((res) => res.json()),
       ]);
       setGenreByYear(g);
       setRatingDist(r);
       setMoviesRuntime(m);
       setTvSeasons(t);
+      setCountryByYear(c);
       setLoading(false);
     })();
   }, []);
@@ -126,9 +139,10 @@ export default function App() {
         (selectedGenres.length === 0 ||
           (d.primary_genre && selectedGenres.includes(d.primary_genre))) &&
         ratingGroups.includes(d.rating_group) &&
+        (selectedCountry ? d.primary_country === selectedCountry : true) &&
         (movieYRange ? d.runtime_min >= movieYRange[0] && d.runtime_min <= movieYRange[1] : true)
     );
-  }, [moviesRuntime, yearRange, selectedGenres, ratingGroups, movieYRange]);
+  }, [moviesRuntime, yearRange, selectedGenres, ratingGroups, movieYRange, selectedCountry]);
 
   const filteredTV = useMemo(() => {
     return tvSeasons.filter(
@@ -139,9 +153,10 @@ export default function App() {
         (selectedGenres.length === 0 ||
           (d.primary_genre && selectedGenres.includes(d.primary_genre))) &&
         ratingGroups.includes(d.rating_group) &&
+        (selectedCountry ? d.primary_country === selectedCountry : true) &&
         (tvYRange ? d.seasons >= tvYRange[0] && d.seasons <= tvYRange[1] : true)
     );
-  }, [tvSeasons, yearRange, selectedGenres, ratingGroups, tvYRange]);
+  }, [tvSeasons, yearRange, selectedGenres, ratingGroups, tvYRange, selectedCountry]);
 
   // UI
   return (
@@ -254,6 +269,7 @@ export default function App() {
                 setRatingGroups([...RATINGS]);
                 setMovieYRange(null);
                 setTvYRange(null);
+                setSelectedCountry(null);
               }}
               className="w-full py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-sm"
             >
@@ -284,9 +300,7 @@ export default function App() {
           {/* STREAMGRAPH */}
           <div className="bg-[#141414] rounded-2xl p-4 border border-white/10 h-[460px]">
             {loading ? (
-              <div className="h-full flex items-center justify-center text-sm opacity-70">
-                Loading data…
-              </div>
+              <div className="h-full flex items-center justify-center text-sm opacity-70">Loading data…</div>
             ) : (
               <Streamgraph
                 data={filteredGenreByYear.map((d) => ({
@@ -295,6 +309,21 @@ export default function App() {
                   count: d.count,
                 }))}
                 yearRange={yearRange}
+              />
+            )}
+          </div>
+
+          {/* WORLD MAP */}
+          <div className="bg-[#141414] rounded-2xl p-4 border border-white/10 h-[520px]">
+            {loading ? (
+              <div className="h-full flex items-center justify-center text-sm opacity-70">Loading data…</div>
+            ) : (
+              <WorldMap
+                data={countryByYear}
+                yearRange={yearRange}
+                selectedCountry={selectedCountry}
+                onSelectCountry={setSelectedCountry}
+                animate={false}
               />
             )}
           </div>
@@ -317,17 +346,22 @@ export default function App() {
             </div>
           </div>
 
-          {/* Optional badges showing active numeric brushes */}
-          {(movieYRange || tvYRange) && (
-            <div className="text-xs opacity-80">
+          {/* Active brush / country badges */}
+          {(movieYRange || tvYRange || selectedCountry) && (
+            <div className="text-xs opacity-80 space-x-2">
               {movieYRange && (
-                <span className="mr-3 inline-block px-2 py-1 rounded bg-white/10 border border-white/20">
-                  Runtime filter: {movieYRange[0]}–{movieYRange[1]} min
+                <span className="inline-block px-2 py-1 rounded bg-white/10 border border-white/20">
+                  Runtime: {movieYRange[0]}–{movieYRange[1]} min
                 </span>
               )}
               {tvYRange && (
                 <span className="inline-block px-2 py-1 rounded bg-white/10 border border-white/20">
-                  Seasons filter: {tvYRange[0]}–{tvYRange[1]}
+                  Seasons: {tvYRange[0]}–{tvYRange[1]}
+                </span>
+              )}
+              {selectedCountry && (
+                <span className="inline-block px-2 py-1 rounded bg-white/10 border border-white/20">
+                  Country: {selectedCountry}
                 </span>
               )}
             </div>
@@ -336,4 +370,4 @@ export default function App() {
       </main>
     </div>
   );
-
+}
