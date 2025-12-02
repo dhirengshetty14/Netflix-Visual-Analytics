@@ -61,16 +61,18 @@ interface ContentAgeRec {
 }
 
 // ---------- paths to JSON in /public/data ----------
-const DATA = {
-  genreByYear: "/data/derived_genre_by_year.json",
-  ratingDist: "/data/derived_rating_distribution.json",
-  moviesRuntime: "/data/derived_movies_runtime.json",
-  tvSeasons: "/data/derived_tv_seasons.json",
-  countryByYear: "/data/derived_country_by_year.json",
-  network: "/data/derived_network_top_actors.json",
-  contentAge: "/data/derived_content_age.json", // ✅ NEW
-};
+// Fix: Prepend the base URL to every path
+const baseUrl = import.meta.env.BASE_URL;
 
+const DATA = {
+  genreByYear: `${baseUrl}data/derived_genre_by_year.json`,
+  ratingDist: `${baseUrl}data/derived_rating_distribution.json`,
+  moviesRuntime: `${baseUrl}data/derived_movies_runtime.json`,
+  tvSeasons: `${baseUrl}data/derived_tv_seasons.json`,
+  countryByYear: `${baseUrl}data/derived_country_by_year.json`,
+  network: `${baseUrl}data/derived_network_top_actors.json`,
+  contentAge: `${baseUrl}data/derived_content_age.json`,
+};
 export default function App() {
   // raw data
   const [genreByYear, setGenreByYear] = useState<GenreYearRec[]>([]);
