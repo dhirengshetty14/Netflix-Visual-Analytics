@@ -219,7 +219,6 @@ export default function App() {
       <header className="sticky top-0 z-10 backdrop-blur bg-black/30 border-b border-white/10">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-4">
           <div className="text-xl font-semibold tracking-tight">Netflix Universe Explorer</div>
-          <div className="text-xs opacity-70">Step 1 — App Shell + Filters</div>
         </div>
       </header>
 
